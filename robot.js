@@ -12,7 +12,7 @@ async function main(tank) {
   let distanceEnemy = 0;
   let damage;
   // position the radar head-on
-  let angle = (await tank.getX()) > WIDTH / 2 ? 150 : -15;
+  let angle = (await tank.getX()) > WIDTH / 2 ? 150 : -20;
 
   // auxiliary functions
 
@@ -26,7 +26,8 @@ async function main(tank) {
   }
 
   async function attackEnemy(tank) {
-    while ((await getLocation(tank, angle)) === 0) {
+    damage = await tank.getDamage()
+    while ((await getLocation(tank, angle)) === 0 && damage === (await tank.getDamage())) {
       await searchEnemy(tank);
     }
     await shootFire(tank, distanceEnemy);
@@ -36,17 +37,13 @@ async function main(tank) {
     //close range attack
     if (distance < 100 && distance) {
       for (let i = positionEnemy; i < 360; i + DIFFERENCE_DEGREES) {
-        await tank.shoot(i, 100);
+        i % 2 === 0 && await tank.shoot(i, 100);
       }
     }
     //long distance attack
-    else if (distance > 100 && distance) {
+    else{
       await tank.shoot(positionEnemy, 700);
       await tank.shoot(positionEnemy + DIFFERENCE_DEGREES, 700);
-    }
-    // free shot
-    else {
-      await tank.shoot(angle, 500);
     }
   }
 
@@ -54,65 +51,83 @@ async function main(tank) {
     return await tank.scan(angle, 10);
   }
 
+  async function watchMode(tank, direction) {
+    switch (direction) {
+      case 'y':
+        distanceEnemy = await getLocation(tank, 180)
+        distanceEnemy ? await shootFire(tank, distanceEnemy) : await shootFire(tank, 180)
+        distanceEnemy = await getLocation(tank, 0)
+        distanceEnemy ? await shootFire(tank, distanceEnemy) : await shootFire(tank, 0)
+        break;
+      case 'x':
+        distanceEnemy = await getLocation(tank, 90)
+        distanceEnemy ? await shootFire(tank, distanceEnemy) : await shootFire(tank, 90)
+        distanceEnemy = await getLocation(tank, 270)
+        distanceEnemy ? await shootFire(tank, distanceEnemy) : await shootFire(tank, 270)
+
+    }
+  }
+
+  async function scapeEnemy(tank) {
+    damage = await tank.getDamage()
+    // go top
+    while ((await tank.getY()) < (HEIGHT - (SAFE_DISTANCE)) && damage === (await tank.getDamage())) {
+      await tank.drive(90, 50);
+      await watchMode(tank, "y")
+    }
+    damage = await tank.getDamage()
+    // go right
+    while ((await tank.getX()) < (WIDTH - SAFE_DISTANCE) && damage === (await tank.getDamage())) {
+      await tank.drive(0, 50);
+      await watchMode(tank, "x")
+    }
+    damage = await tank.getDamage()
+    // go down
+    while ((await tank.getY()) > SAFE_DISTANCE && damage === (await tank.getDamage())) {
+      await tank.drive(270, 50);
+      await watchMode(tank, "y")
+    }
+    damage = await tank.getDamage()
+    // go left
+    while ((await tank.getX()) > (SAFE_DISTANCE * 2) && damage === (await tank.getDamage())) {
+      await tank.drive(180, 50);
+      await watchMode(tank, "x")
+    }
+
+    scapeEnemy(tank)
+  }
+
   // main loop
 
   while (true) {
+    damage = await tank.getDamage();
     // Find the center
     if (INIT_POSITION_X >= WIDTH / 2) {
-      damage = await tank.getDamage();
       //go right
       while (
-        (await tank.getX()) > WIDTH / 2 &&
-        damage === (await tank.getDamage())
+        (await tank.getX()) >= (WIDTH / 2) && damage === (await tank.getDamage())
       ) {
-        await tank.drive(180, 80);
+        await tank.drive(180, 100);
         positionEnemy ? await attackEnemy(tank) : await searchEnemy(tank);
       }
       while (
-        (await tank.getX()) < WIDTH / 2 &&
-        damage === (await tank.getDamage())
+        (await tank.getX()) < (WIDTH / 2) && damage === (await tank.getDamage())
       ) {
-        await tank.drive(0, 0);
+        await tank.drive(0, 0)
         positionEnemy ? await attackEnemy(tank) : await searchEnemy(tank);
       }
     } else {
       // go left
-      while (
-        (await tank.getX()) < WIDTH / 2 &&
-        damage === (await tank.getDamage())
-      ) {
-        await tank.drive(0, 80);
+      while (damage === (await tank.getDamage()) && (await tank.getX()) <= (WIDTH / 2)) {
+        await tank.drive(0, 100);
         positionEnemy ? await attackEnemy(tank) : await searchEnemy(tank);
       }
-      while (
-        (await tank.getX()) > WIDTH / 2 &&
-        damage === (await tank.getDamage())
-      ) {
+      while (damage === (await tank.getDamage()) && (await tank.getX()) > WIDTH / 2) {
         await tank.drive(0, 0);
         positionEnemy ? await attackEnemy(tank) : await searchEnemy(tank);
       }
-    }
 
-    // scape from the enemy
-    if ((await tank.getY()) <= HEIGHT / 2) {
-      damage = await tank.getDamage();
-      while (
-        damage === (await tank.getDamage()) &&
-        (await tank.getY()) > HEIGHT - SAFE_DISTANCE
-      ) {
-        await tank.drive(115, 100);
-        positionEnemy ? await attackEnemy(tank) : await searchEnemy(tank);
-      }
-      await tank.drive(45, 0);
-    } else {
-      damage = await tank.getDamage();
-      while (
-        damage === (await tank.getDamage()) &&
-        (await tank.getY()) < HEIGHT + SAFE_DISTANCE
-      ) {
-        positionEnemy ? await attackEnemy(tank) : await searchEnemy(tank);
-      }
-      await tank.drive(315, 0);
     }
+    await scapeEnemy(tank)
   }
 }
